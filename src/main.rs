@@ -1,9 +1,11 @@
-use std::net::TcpListener;
+use std::{net::TcpListener, result};
 
 use axum::{Json, Router, response::IntoResponse, routing::post};
 use serde::Serialize;
 use solana_sdk::{signature::Keypair, signer::Signer};
+use axum::{response::{Response}, http::StatusCode};
 
+#[derive(Serialize)]
 struct KeypairData {
     pubkey: String,
     secret: String,
@@ -16,15 +18,31 @@ struct KeypairResponse {
 }
 
 async fn gen_keypair() -> impl IntoResponse {
-    let keypair = Keypair::new();
-    let response = KeypairResponse {
-        success: true,
-        data: KeypairData {
-            pubkey: keypair.pubkey().to_string(),
-            secret: bs58::encode(keypair).to_string(),
-        },
-    };
-    Json(response)
+    let result: Result<KeypairData, ()> = (|| {
+        let keypair = Keypair::new();
+        let pubkey = keypair.pubkey().to_string();
+        let secret = bs58::encode(keypair.to_bytes()).into_string();
+        Ok(KeypairData { pubkey, secret })
+    })();
+    match result {
+        Ok(data) => {
+            let response = KeypairResponse {
+                success: true,
+                data,
+            };
+            (StatusCode::OK, Json(response))
+        }
+        Err(_) => {
+            let response = KeypairResponse {
+                success: false,
+                data: KeypairData {
+                    pubkey: "".to_string(),
+                    secret: "".to_string(),
+                },
+            };
+            (StatusCode::BAD_REQUEST, Json(response))
+        }
+    }
 }
 
 #[tokio::main]
